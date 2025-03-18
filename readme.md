@@ -40,8 +40,8 @@ Run `main.py` to start the application.
 *   `gui.py`: PyQt6 GUI implementation.
 *   `main.py`: Application entry point.
 *   `model.py`: Gemini AI model initialization and interaction.
-* *   `qWorker.py`: Handles AI response generation in a separate thread.
-* *   `tools.py`: Implements file system and web search tools.
+* `qWorker.py`: Handles AI response generation in a separate thread.
+* `tools.py`: Implements file system and web search tools.
 
 ## License
 
