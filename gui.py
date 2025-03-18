@@ -1,0 +1,185 @@
+from PyQt6.QtCore import Qt, QThread
+from PyQt6.QtWidgets import (QMainWindow, QPlainTextEdit, QPushButton,
+                             QVBoxLayout, QWidget, QHBoxLayout, QMenuBar, QMenu,
+                             QFileDialog, QTextEdit, QMessageBox)
+from model import init_model, list_available_models, DEFAULT_MODEL, SYSTEM_PROMPT
+
+from PyQt6.QtGui import QFont, QAction, QShortcut, QKeySequence, QTextCharFormat, QColor
+from qWorker import ChatWorker
+
+class ChatWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Neo Rebis")
+        self.resize(600, 400)
+
+        self.current_font = QFont("Comic Sans MS", 14)
+        self.current_color = "white"  # Initial color as a string
+        self.model_instance = None
+        self.chat = None
+        self.bot_font = QFont("Consolas", 14)  # Default bot font
+        self.bot_color = "#2196F3"  # Initial color as a string
+        # Model parameters
+        self.temperature = 1.0
+        self.top_p = 1.0
+        self.top_k = 1
+        self.max_output_tokens = 4000
+        self.block_harassment = False
+        self.block_hate_speech = False
+        self.block_sexually_explicit = False
+        self.block_dangerous_content = False
+
+        self.selected_model_name = DEFAULT_MODEL
+        self.system_prompt = SYSTEM_PROMPT
+
+        # Initialize the model
+        self.init_or_reinit_model()
+
+        self.setup_ui()
+        self.setup_shortcuts()
+        self.setup_status_bar()
+        self.ChatWorker = None
+
+    def init_or_reinit_model(self, model_name=None, system_prompt=None, temperature=None, top_p=None, top_k=None, max_output_tokens=None,
+                             block_harassment=None, block_hate_speech=None, block_sexually_explicit=None, block_dangerous_content=None):
+        """Initializes or reinitializes the AI model."""
+        model_name = model_name if model_name is not None else self.selected_model_name
+        system_prompt = system_prompt if system_prompt is not None else self.system_prompt
+        temperature = temperature if temperature is not None else self.temperature
+        top_p = top_p if top_p is not None else self.top_p
+        top_k = top_k if top_k is not None else self.top_k
+        max_output_tokens = max_output_tokens if max_output_tokens is not None else self.max_output_tokens
+        block_harassment = block_harassment if block_harassment is not None else self.block_harassment
+        block_hate_speech = block_hate_speech if block_hate_speech is not None else self.block_hate_speech
+        block_sexually_explicit = block_sexually_explicit if block_sexually_explicit is not None else self.block_sexually_explicit
+        block_dangerous_content = block_dangerous_content if block_dangerous_content is not None else self.block_dangerous_content
+
+        try:
+            self.model_instance, self.chat = init_model(model_name=model_name, system_prompt=system_prompt,
+                                                        temperature=temperature, top_p=top_p, top_k=top_k,
+                                                        max_output_tokens=max_output_tokens,
+                                                        block_harassment=block_harassment, block_hate_speech=block_hate_speech,
+                                                        block_sexually_explicit=block_sexually_explicit, block_dangerous_content=block_dangerous_content)
+
+            self.statusBar().showMessage("Model initialized!", 3000)
+            self.selected_model_name = model_name
+            self.system_prompt = system_prompt
+            self.temperature = temperature
+            self.top_p = top_p
+            self.top_k = top_k
+            self.max_output_tokens = max_output_tokens
+            self.block_harassment = block_harassment
+            self.block_hate_speech = block_hate_speech
+            self.block_sexually_explicit = block_sexually_explicit
+            self.block_dangerous_content = block_dangerous_content
+
+        except Exception as e:
+            self.show_error_message(f"Model initialization failed: {e}")
+            self.model_instance, self.chat = None, None
+
+    def show_error_message(self, message):
+        """Displays an error message."""
+        self.chatLog.append(f'<p style="color: red;">Error: {message}</p>')
+
+    def setup_ui(self):
+        """Sets up the UI."""
+        self.create_menu_bar()
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        self.chatLog = QTextEdit()
+        self.chatLog.setReadOnly(True)
+
+        self.inputTextBox = QPlainTextEdit()
+        self.inputTextBox.setPlaceholderText("Enter your message here...")
+        self.inputTextBox.installEventFilter(self)
+
+        self.sendButton = QPushButton("Send")
+        self.sendButton.clicked.connect(self.handle_send)
+
+
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.sendButton)
+        self.sendButton.setToolTip("Ctrl+Enter")
+
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.addWidget(self.chatLog, 3)
+        main_layout.addWidget(self.inputTextBox, 1)
+        main_layout.addLayout(button_layout)
+        self.inputTextBox.setFocus()
+
+    def create_menu_bar(self):
+        """Creates the menu bar."""
+        menu_bar = self.menuBar()
+
+        file_menu = menu_bar.addMenu("&File")
+        self.add_action(file_menu, "&Exit", self.close, "Ctrl+Q")
+
+    def add_action(self, menu, text, slot, shortcut=None):
+        """Adds an action to a menu."""
+        action = QAction(text, self)
+        action.triggered.connect(slot)
+        if shortcut:
+            action.setShortcut(shortcut)
+        menu.addAction(action)
+
+    def setup_shortcuts(self):
+        """Sets up shortcuts."""
+        QShortcut(QKeySequence("Ctrl+Enter"), self, self.handle_send)
+
+    def setup_status_bar(self):
+        """Sets up the status bar."""
+        self.statusBar().showMessage("Ready")
+
+    def handle_send(self):
+        """Handles sending messages."""
+        user_text = self.inputTextBox.toPlainText().strip()
+        if not user_text:
+            return
+        if not self.chat:
+            self.show_error_message("Chat model not initialized.")
+            return
+
+        self.append_user_message(user_text)
+        self.inputTextBox.clear()
+        self.start_ai_response(user_text)
+
+    def append_user_message(self, user_text):
+        """Appends user messages."""
+        set_style = f'style="color: {self.current_color}; font-family: {self.current_font.family()}; font-size: {self.current_font.pointSize()}px;"'
+        self.chatLog.append(f'<p {set_style}>User: {user_text}</p>')
+
+    def start_ai_response(self, user_text):
+        """Starts the AI response."""
+        self.statusBar().showMessage("Generating response...")
+        self.worker = ChatWorker(self.chat, user_text)
+        self.worker.stream_signal.connect(self.append_ai_message)
+        self.worker.error_signal.connect(self.handle_error)
+        self.worker.done_signal.connect(self.handle_response_complete)
+        self.worker.start()
+
+    def append_ai_message(self, chunk_text):
+        """Appends AI messages."""
+        set_style = f'style="color: {self.bot_color}; font-family: {self.bot_font.family()}; font-size: {self.bot_font.pointSize()}px;"'
+        self.chatLog.append(f'<p {set_style}>AI: {chunk_text}</p>')
+
+    def handle_response_complete(self):
+        """Handles AI response completion"""
+        self.statusBar().showMessage("Response generated", 3000)
+
+    def scroll_chat_to_bottom(self):
+        """Scrolls to the bottom."""
+        self.chatLog.verticalScrollBar().setValue(self.chatLog.verticalScrollBar().maximum())
+
+    def handle_error(self, err):
+        """Handles worker errors."""
+        self.show_error_message(f"Error: {err}")
+        self.statusBar().showMessage("Error occurred", 3000)
+
+    def eventFilter(self, source, event):
+        """Filters events."""
+        if (source is self.inputTextBox and event.type() == event.Type.KeyPress
+                and event.key() == Qt.Key.Key_Return and event.modifiers() == Qt.KeyboardModifier.ControlModifier):
+            self.handle_send()
+            return True
+        return super().eventFilter(source, event)
