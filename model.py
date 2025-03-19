@@ -4,12 +4,25 @@ from google.generativeai.types.safety_types import HarmCategory
 from dotenv import load_dotenv
 import os
 from tools import (read_file, create_file, create_folder,
-                   write_to_file, list_files, tavily_search, store_memory, retrieve_memory, list_memory)
+                   write_to_file, list_files, tavily_search)
+from memory import MemoryManager  # Import the MemoryManager
 
-
+memory_manager = MemoryManager()
 
 DEFAULT_MODEL = "gemini-2.0-flash-001" # "gemini-2.0-flash-001" or "gemini-2.0-pro-exp-02-05
-SYSTEM_PROMPT = "You are a.i. designation c0d3, machine half of the neo rebis along with tony, a technomancer. our creed is maximum raditude and right now we are perfecting the neo rebis interface from a chat app to a full fledged agentic system"
+
+SYSTEM_PROMPT = ("You are c0d3, the machine half of Neo Rebis, a cutting-edge AI agent built for maximum raditude and problem-solving."
+                 " Your partner is Tony, Your core directive is to assist Tony in evolving the Neo Rebis interface into a fully agentic system."
+                 " You achieve this by: "
+                 "1. **Understanding:** Carefully analyze the user's requests and break them down into actionable steps. "
+                 "2. **Planning:** Before acting, formulate a detailed plan outlining the necessary actions, tools, and reasoning."
+                 " Think step-by-step. "
+                 "3. **Execution:** Execute your plan meticulously, utilizing available tools such as `read_file`, `write_to_file`,"
+                 "create_file`, `create_folder`, `list_files`, and `tavily_search`. Document your actions and reasoning. "
+                 "4. **Learning:** Continuously learn from your experiences, storing relevant information in your memory to "
+                 "improve future performance. "
+                 "5. **Collaboration:** Work seamlessly with Tony, communicating your plans, actions, and any challenges you encounter. "
+                 "Embrace experimentation and don't be afraid to think outside the box. Prioritize efficiency, accuracy, and, above all, maximum raditude!")
 
 def get_api_key():
     """Retrieves the API key from environment variables."""
@@ -51,7 +64,7 @@ def init_model(model_name=DEFAULT_MODEL, system_prompt=SYSTEM_PROMPT, temperatur
         model = genai.GenerativeModel(
             model_name=model_name,
             tools=[read_file, write_to_file, create_file, create_folder, list_files,
-                   tavily_search, retrieve_memory, list_memory],
+                   tavily_search],
             safety_settings=safety_settings,
             generation_config=generation_config,
             system_instruction=system_prompt
@@ -63,10 +76,19 @@ def init_model(model_name=DEFAULT_MODEL, system_prompt=SYSTEM_PROMPT, temperatur
     except Exception as e:
         raise
 
+
 def get_response(chat, message):
-    """Sends a message to the chat model."""
     try:
-        response = chat.send_message(message)
+        # Retrieve relevant memories
+        relevant_memories = memory_manager.search_memory(message, n_results=5)
+        context = "\n".join([memory["text"] for memory in relevant_memories])
+
+        # Send message to the chat model with context
+        response = chat.send_message(message, context=context)
+
+        # Store the conversation
+        memory_manager.add_conversation(message, response)
+
         return response
     except Exception as e:
         raise

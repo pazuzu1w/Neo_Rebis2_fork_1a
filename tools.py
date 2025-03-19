@@ -66,27 +66,3 @@ def tavily_search(query: str):
         return response
     except Exception as e:
         return f"Error performing search: {str(e)}"
-
-# --- Memory Management Functions ---
-
-def store_memory(content: str, file_path: str, metadata: Dict = {1}) -> dict:
-    """Stores a chunk of information in the vector database."""
-    # Delegate to the MemoryManager instance
-    return memory_manager.store_memory(content, file_path, metadata)
-
-def retrieve_memory(query: str, n_results: int = 5) -> dict:
-    """Retrieves relevant chunks of information based on a query."""
-    # Delegate to the MemoryManager instance
-    retrieved_data = memory_manager.retrieve_memory(query, n_results)
-    # Wrap as a dict
-    return {"result": retrieved_data} # Wrap the result
-
-def list_memory() -> dict:
-    """Retrieves all memory data based on a query."""
-    # Delegate to the MemoryManager instance
-    all_data = memory_manager.list_memory()
-    # Wrap as a dict
-    return {"result": all_data} # Wrap the result
-
-def delete_all_memories()-> dict:
-    return memory_manager.delete_all()
