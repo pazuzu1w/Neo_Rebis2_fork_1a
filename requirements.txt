@@ -1,0 +1,8 @@
+PyQt6
+pyaudio
+SpeechRecognition
+gTTS
+pygame
+numpy
+librosa
+soundfile

@@ -9,7 +9,8 @@ from qWorker import ChatWorker
 from theme_manager import ThemeManager
 from visualizer import MemoryVisualizer
 from sigil_generator import SigilGenerator
-
+from voice_interface import VoiceController, VoiceControlPanel
+from voice_visualizer import VoiceVisualizer
 
 class ChatWindow(QMainWindow):
     def __init__(self):
@@ -51,6 +52,13 @@ class ChatWindow(QMainWindow):
         self.memory_visualizer = MemoryVisualizer(memory_manager)
 
         self.sigil_generator = SigilGenerator()
+
+        # Initialize voice controller
+        self.voice_controller = VoiceController()
+        self.voice_controller.speech_recognized_signal.connect(self.handle_speech_input)
+
+        # Initialize voice visualizer
+        self.voice_visualizer = VoiceVisualizer()
 
     def init_or_reinit_model(self, model_name=None, system_prompt=None, temperature=None, top_p=None, top_k=None, max_output_tokens=None,
                              block_harassment=None, block_hate_speech=None, block_sexually_explicit=None, block_dangerous_content=None):
@@ -120,6 +128,14 @@ class ChatWindow(QMainWindow):
         main_layout.addLayout(button_layout)
         self.inputTextBox.setFocus()
 
+        # Add voice button to button layout
+        self.voiceButton = QPushButton("🎤")
+        self.voiceButton.setToolTip("Toggle Voice Input")
+        self.voiceButton.clicked.connect(self.toggle_voice)
+        button_layout.addWidget(self.voiceButton)
+
+        self.auto_speak = False  # Default to off
+
     def create_menu_bar(self):
         """Creates the menu bar."""
         menu_bar = self.menuBar()
@@ -144,6 +160,20 @@ class ChatWindow(QMainWindow):
         # In create_menu_bar method:
         debug_menu = menu_bar.addMenu("&Debug")
         self.add_action(debug_menu, "&Generate Test Data", self.generate_test_data)
+
+        # Add Voice menu
+        voice_menu = menu_bar.addMenu("&Voice")
+        self.add_action(voice_menu, "&Voice Settings", self.toggle_voice_panel)
+        self.add_action(voice_menu, "&Start Listening", lambda: self.voice_controller.start_listening())
+        self.add_action(voice_menu, "&Stop Listening", lambda: self.voice_controller.stop_listening())
+        self.add_action(voice_menu, "&Read Last Response", lambda: self.speak_response(self.last_response))
+
+        voice_menu.addSeparator()
+        self.add_action(voice_menu, "Show Visualizer", self.toggle_voice_visualizer)
+        submenu = voice_menu.addMenu("Visualizer Mode")
+        self.add_action(submenu, "Sigil Mode", lambda: self.set_visualizer_mode("sigil"))
+        self.add_action(submenu, "Wave Mode", lambda: self.set_visualizer_mode("wave"))
+        self.add_action(submenu, "Fractal Mode", lambda: self.set_visualizer_mode("fractal"))
 
     def add_action(self, menu, text, slot, shortcut=None):
         """Adds an action to a menu."""
@@ -196,6 +226,14 @@ class ChatWindow(QMainWindow):
     def handle_response_complete(self):
         """Handles AI response completion"""
         self.statusBar().showMessage("Response generated", 3000)
+
+        # Store last response for possible voice playback
+        self.last_response = self.chatLog.toPlainText().split("AI:")[-1].strip()
+
+        # Auto-speak if enabled
+        if hasattr(self, 'auto_speak') and self.auto_speak:
+            self.speak_response(self.last_response)
+
 
     def scroll_chat_to_bottom(self):
         """Scrolls to the bottom."""
@@ -255,3 +293,56 @@ class ChatWindow(QMainWindow):
 
         print(f"Added {len(test_conversations)} test conversations to memory")
         self.statusBar().showMessage("Test data generated", 3000)
+
+    def handle_speech_input(self, text):
+        """Handle recognized speech input."""
+        # Set the input text and send
+        self.inputTextBox.setPlainText(text)
+        self.handle_send()
+
+    def toggle_voice_panel(self):
+        """Show/hide the voice control panel."""
+        if hasattr(self, 'voice_panel') and self.voice_panel.isVisible():
+            self.voice_panel.hide()
+        else:
+            if not hasattr(self, 'voice_panel'):
+                self.voice_panel = VoiceControlPanel(self.voice_controller)
+                # Connect a signal from the panel to update auto_speak
+                if hasattr(self.voice_panel, 'auto_speak_changed'):
+                    self.voice_panel.auto_speak_changed.connect(self.set_auto_speak)
+            self.voice_panel.show()
+
+    def set_auto_speak(self, enabled):
+        """Set whether responses should be automatically spoken."""
+        self.auto_speak = enabled
+
+    def speak_response(self, response_text):
+        """Speak the AI response."""
+        self.voice_controller.speak(response_text)
+
+    def closeEvent(self, event):
+        """Clean up resources when closing the app."""
+        # Clean up voice controller
+        if hasattr(self, 'voice_controller'):
+            self.voice_controller.cleanup()
+        event.accept()
+
+    def toggle_voice_visualizer(self):
+        """Show/hide the voice visualizer."""
+        if self.voice_visualizer.isVisible():
+            self.voice_visualizer.hide()
+        else:
+            self.voice_visualizer.show()
+
+    def set_visualizer_mode(self, mode):
+        """Set the visualizer mode."""
+        self.voice_visualizer.set_viz_mode(mode)
+
+    def toggle_voice(self):
+        """Toggle voice input on/off."""
+        if self.voice_controller.is_listening:
+            self.voice_controller.stop_listening()
+            self.voiceButton.setStyleSheet("")
+        else:
+            self.voice_controller.start_listening()
+            self.voiceButton.setStyleSheet("background-color: #E94560;")
