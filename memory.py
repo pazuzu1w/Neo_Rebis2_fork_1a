@@ -5,6 +5,12 @@ from typing import List, Dict, Optional, Tuple
 import os
 import datetime
 import json
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+from collections import Counter
+import re
 
 
 class MemoryManager:
@@ -42,42 +48,59 @@ class MemoryManager:
             )
             print(f"Created new collection: {collection_name}")
 
-    def add_memory(self,
-                   text: str,
-                   metadata: Dict = None,
-                   id: str = None) -> str:
-        """Add a memory to the database.
+    # Update MemoryManager class with topic extraction
+    def add_memory(self, text, metadata=None, id=None):
+        """Add a memory to the database with automatic topic extraction."""
+        memory_id = super().add_memory(text, metadata, id)
 
-        Args:
-            text: The text content to store
-            metadata: Additional metadata about the memory
-            id: Optional ID for the memory (generated if not provided)
+        if memory_id and text:
+            # Extract topics from the text
+            extractor = TopicExtractor()
+            topics = extractor.extract_topics(text)
 
-        Returns:
-            The ID of the stored memory
-        """
-        if not text:
-            return None
+            # Update metadata with topics if any were found
+            if topics:
+                topic_dict = {f"topic_{i}": topic for i, (topic, _) in enumerate(topics)}
 
-        # Generate a unique ID if not provided
-        memory_id = id if id else str(uuid.uuid4())
+                # If metadata exists, update it, otherwise create new
+                if metadata is None:
+                    metadata = topic_dict
+                else:
+                    metadata.update(topic_dict)
 
-        # Create default metadata if not provided
-        if metadata is None:
-            metadata = {}
-
-        # Add timestamp if not in metadata
-        if "timestamp" not in metadata:
-            metadata["timestamp"] = datetime.datetime.now().isoformat()
-
-        # Add memory to collection
-        self.collection.add(
-            documents=[text],
-            metadatas=[metadata],
-            ids=[memory_id]
-        )
+                # Update the memory with topics
+                self.update_memory(memory_id, text, metadata)
 
         return memory_id
+
+    def search_by_topic(self, topic, n_results=5):
+        """Search for memories containing a specific topic."""
+        # Build a metadata filter to find documents containing the topic
+        topic_filter = {}
+
+        # Search across all topic_N fields
+        for i in range(10):  # Assuming we store up to 10 topics
+            filter_key = f"topic_{i}"
+            topic_filter[filter_key] = topic
+
+        # Execute the search with an OR condition across topic fields
+        results = self.collection.query(
+            query_texts=[""],  # Empty query to match based on metadata
+            n_results=n_results,
+            where_document={"$or": [topic_filter]}
+        )
+
+        # Format results
+        memories = []
+        if results["documents"] and len(results["documents"]) > 0:
+            for i, doc in enumerate(results["documents"][0]):
+                memories.append({
+                    "id": results["ids"][0][i],
+                    "text": doc,
+                    "metadata": results["metadatas"][0][i],
+                })
+
+        return memories
 
     def search_memory(self,
                       query: str,
@@ -251,3 +274,82 @@ class MemoryManager:
                 })
 
         return conversation_history
+
+
+class TopicExtractor:
+    def __init__(self):
+        # Download required NLTK data (only needed once)
+        try:
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            nltk.download('punkt')
+        try:
+            nltk.data.find('corpora/stopwords')
+        except LookupError:
+            nltk.download('stopwords')
+        try:
+            nltk.data.find('corpora/wordnet')
+        except LookupError:
+            nltk.download('wordnet')
+
+        self.stop_words = set(stopwords.words('english'))
+        self.lemmatizer = WordNetLemmatizer()
+
+        # Add magical/esoteric terminology to our processing
+        self.magical_terms = {
+            'chaos', 'magic', 'sigil', 'ritual', 'symbol', 'trance',
+            'synchronicity', 'invocation', 'evocation', 'banishing',
+            'gnosis', 'servitor', 'egregore', 'thoughtform', 'divination'
+        }
+
+    def extract_topics(self, text, top_n=5):
+        """Extract the main topics from a text."""
+        if not text:
+            return []
+
+        # Preprocess the text
+        # Convert to lowercase and remove punctuation
+        text = re.sub(r'[^\w\s]', '', text.lower())
+
+        # Tokenize
+        tokens = word_tokenize(text)
+
+        # Remove stopwords and short words, but keep magical terms
+        filtered_tokens = [
+            self.lemmatizer.lemmatize(word) for word in tokens
+            if (word not in self.stop_words and len(word) > 3) or word in self.magical_terms
+        ]
+
+        # Count word frequency
+        word_freq = Counter(filtered_tokens)
+
+        # Return top N topics
+        return word_freq.most_common(top_n)
+
+
+# Update MemoryManager class with topic extraction
+def add_memory(self, text, metadata=None, id=None):
+    """Add a memory to the database with automatic topic extraction."""
+    memory_id = super().add_memory(text, metadata, id)
+
+    if memory_id and text:
+        # Extract topics from the text
+        extractor = TopicExtractor()
+        topics = extractor.extract_topics(text)
+
+        # Update metadata with topics if any were found
+        if topics:
+            topic_dict = {f"topic_{i}": topic for i, (topic, _) in enumerate(topics)}
+
+            # If metadata exists, update it, otherwise create new
+            if metadata is None:
+                metadata = topic_dict
+            else:
+                metadata.update(topic_dict)
+
+            # Update the memory with topics
+            self.update_memory(memory_id, text, metadata)
+
+    return memory_id
+
+

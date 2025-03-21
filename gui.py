@@ -2,10 +2,14 @@ from PyQt6.QtCore import Qt, QThread
 from PyQt6.QtWidgets import (QMainWindow, QPlainTextEdit, QPushButton,
                              QVBoxLayout, QWidget, QHBoxLayout, QMenuBar, QMenu,
                              QFileDialog, QTextEdit, QMessageBox)
-from model import init_model, list_available_models, DEFAULT_MODEL, SYSTEM_PROMPT
+from model import init_model, list_available_models, DEFAULT_MODEL, SYSTEM_PROMPT, memory_manager
 
 from PyQt6.QtGui import QFont, QAction, QShortcut, QKeySequence, QTextCharFormat, QColor
 from qWorker import ChatWorker
+from theme_manager import ThemeManager
+from visualizer import MemoryVisualizer
+from sigil_generator import SigilGenerator
+
 
 class ChatWindow(QMainWindow):
     def __init__(self):
@@ -39,6 +43,14 @@ class ChatWindow(QMainWindow):
         self.setup_shortcuts()
         self.setup_status_bar()
         self.ChatWorker = None
+
+        self.theme_manager = ThemeManager(self)
+        self.theme_manager.set_theme("default")
+
+        # Create visualizer
+        self.memory_visualizer = MemoryVisualizer(memory_manager)
+
+        self.sigil_generator = SigilGenerator()
 
     def init_or_reinit_model(self, model_name=None, system_prompt=None, temperature=None, top_p=None, top_k=None, max_output_tokens=None,
                              block_harassment=None, block_hate_speech=None, block_sexually_explicit=None, block_dangerous_content=None):
@@ -115,6 +127,20 @@ class ChatWindow(QMainWindow):
         file_menu = menu_bar.addMenu("&File")
         self.add_action(file_menu, "&Exit", self.close, "Ctrl+Q")
 
+        themes_menu = menu_bar.addMenu("&Themes")
+        self.add_action(themes_menu, "&Default", lambda: self.theme_manager.set_theme("default"))
+        self.add_action(themes_menu, "&Twilight", lambda: self.theme_manager.set_theme("twilight"))
+        self.add_action(themes_menu, "&Solar", lambda: self.theme_manager.set_theme("solar"))
+        self.add_action(themes_menu, "&Chaos Mode", lambda: self.theme_manager.set_theme("chaos"))
+
+        # Add Visualization menu
+        viz_menu = menu_bar.addMenu("&Visualize")
+        self.add_action(viz_menu, "&Memory Network", self.show_memory_network)
+        self.add_action(viz_menu, "&Topic Heatmap", self.show_topic_heatmap)
+
+        tools_menu = menu_bar.addMenu("&Tools")
+        self.add_action(tools_menu, "&Sigil Generator", self.show_sigil_generator)
+
     def add_action(self, menu, text, slot, shortcut=None):
         """Adds an action to a menu."""
         action = QAction(text, self)
@@ -183,3 +209,17 @@ class ChatWindow(QMainWindow):
             self.handle_send()
             return True
         return super().eventFilter(source, event)
+
+    def show_memory_network(self):
+        """Shows the memory network visualization."""
+        self.memory_visualizer.generate_network_graph()
+        self.memory_visualizer.show()
+
+    def show_topic_heatmap(self):
+        """Shows the topic heatmap visualization."""
+        self.memory_visualizer.generate_topic_heatmap()
+        self.memory_visualizer.show()
+
+    def show_sigil_generator(self):
+        """Shows the sigil generator."""
+        self.sigil_generator.show()
