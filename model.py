@@ -83,13 +83,31 @@ def get_response(chat, message):
     try:
         # Retrieve relevant memories
         relevant_memories = memory_manager.search_memory(message, n_results=5)
-        context = "\n".join([memory["text"] for memory in relevant_memories])
 
-        # Send message to the chat model with context
-        response = chat.send_message(message, context=context)
+        # Format the context as part of the message
+        if relevant_memories:
+            context_texts = [memory["text"] for memory in relevant_memories]
+            context_str = "\n\n".join(context_texts)
+            print(f"Found {len(relevant_memories)} relevant memories.")
 
-        # Store the conversation
-        memory_manager.add_conversation(message, response)
+            # Create a combined message with context
+            augmented_message = f"""
+Here are some relevant previous conversations that might help with your response:
+----
+{context_str}
+----
+
+User's current message: {message}
+"""
+        else:
+            # No relevant memories found, use original message
+            augmented_message = message
+
+        # Send the augmented message
+        response = chat.send_message(augmented_message)
+
+        # Store only the original user message and response pair
+        memory_manager.add_conversation(message, response.text)
 
         return response
     except Exception as e:

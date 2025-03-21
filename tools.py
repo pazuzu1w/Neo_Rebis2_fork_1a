@@ -9,10 +9,7 @@ load_dotenv()
 tavily_api_key = os.getenv("TAVILY_API_KEY")
 tavily = TavilyClient(api_key=tavily_api_key)
 
-# Initialize the MemoryManager.  This should ideally be done *once*
-# at the application level (e.g., in main.py) and passed to wherever
-# it's needed.  But for now, we'll do it here.
-memory_manager = MemoryManager()
+
 
 def create_folder(path: str):
     """Creates a new folder at the specified path."""
