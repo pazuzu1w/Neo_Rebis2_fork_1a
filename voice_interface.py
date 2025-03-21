@@ -21,6 +21,12 @@ class VoiceController(QObject):
     speech_recognized_signal = pyqtSignal(str)
     tts_done_signal = pyqtSignal()
     status_signal = pyqtSignal(str)
+    # Update signals
+    speech_recognized_signal = pyqtSignal(str)
+    tts_done_signal = pyqtSignal()
+    status_signal = pyqtSignal(str)
+    speech_started_signal = pyqtSignal(float)  # Intensity parameter
+    speech_ended_signal = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -105,6 +111,12 @@ class VoiceController(QObject):
             return
 
         self.is_speaking = True
+
+        # Analyze text for intensity
+        intensity = self._analyze_text_intensity(text)
+        # Emit signal that speaking has started, with intensity
+        self.speech_started_signal.emit(intensity)
+
         self.speaking_thread = threading.Thread(target=self._speak_text, args=(text,))
         self.speaking_thread.daemon = True
         self.speaking_thread.start()
@@ -138,9 +150,46 @@ class VoiceController(QObject):
             self.is_speaking = False
             self.tts_done_signal.emit()
 
+            # Signal that speech has ended
+            self.speech_ended_signal.emit()
+
         except Exception as e:
             self.status_signal.emit(f"Error in speech synthesis: {e}")
             self.is_speaking = False
+            self.speech_ended_signal.emit()
+
+    def _analyze_text_intensity(self, text):
+        """
+        Analyze text to determine overall speech intensity.
+        Returns a float from 0.3 (calm) to 0.9 (intense).
+        """
+        # Default medium intensity
+        intensity = 0.6
+
+        # Look for intensity markers
+        if '!' in text:
+            # More exclamation marks = more intensity
+            intensity += 0.05 * text.count('!')
+
+        # Question marks slightly increase intensity
+        if '?' in text:
+            intensity += 0.02 * text.count('?')
+
+        # ALL CAPS sections increase intensity
+        caps_words = sum(1 for word in text.split() if word.isupper() and len(word) > 2)
+        if caps_words > 0:
+            intensity += 0.1 * min(caps_words / 10, 1.0)
+
+        # Magical keywords increase intensity
+        magical_terms = ['sigil', 'chaos', 'ritual', 'magic', 'invoke', 'evoke', 'banish', 'summon']
+        for term in magical_terms:
+            if term in text.lower():
+                intensity += 0.03
+
+        # Cap at 0.9 maximum
+        intensity = min(0.9, intensity)
+
+        return intensity
 
     def _apply_voice_effects(self, audio_file):
         """Apply various effects to the voice."""

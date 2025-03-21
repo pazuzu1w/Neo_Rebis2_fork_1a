@@ -56,6 +56,8 @@ class ChatWindow(QMainWindow):
         # Initialize voice controller
         self.voice_controller = VoiceController()
         self.voice_controller.speech_recognized_signal.connect(self.handle_speech_input)
+        self.voice_controller.speech_started_signal.connect(self.on_speech_started)
+        self.voice_controller.speech_ended_signal.connect(self.on_speech_ended)
 
         # Initialize voice visualizer
         self.voice_visualizer = VoiceVisualizer()
@@ -346,3 +348,13 @@ class ChatWindow(QMainWindow):
         else:
             self.voice_controller.start_listening()
             self.voiceButton.setStyleSheet("background-color: #E94560;")
+
+    def on_speech_started(self, intensity):
+        """Handler for when AI speech starts."""
+        if hasattr(self, 'voice_visualizer') and self.voice_visualizer.isVisible():
+            self.voice_visualizer.set_ai_speaking(True, intensity)
+
+    def on_speech_ended(self):
+        """Handler for when AI speech ends."""
+        if hasattr(self, 'voice_visualizer') and self.voice_visualizer.isVisible():
+            self.voice_visualizer.set_ai_speaking(False)

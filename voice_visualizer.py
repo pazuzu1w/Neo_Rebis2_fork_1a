@@ -8,35 +8,20 @@ import struct
 
 
 class VoiceVisualizer(QWidget):
-    """Visualizes audio output with magical/sigil-like patterns."""
+    """Visualizes AI speech output with magical/sigil-like patterns."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Voice Visualization")
         self.resize(400, 400)
 
-        # Audio processing
+        # Remove microphone input code
         self.FORMAT = pyaudio.paInt16
         self.CHANNELS = 1
         self.RATE = 44100
         self.CHUNK = 1024
-        self.p = pyaudio.PyAudio()
 
-        # Try to open an input stream
-        try:
-            self.stream = self.p.open(
-                format=self.FORMAT,
-                channels=self.CHANNELS,
-                rate=self.RATE,
-                input=True,
-                frames_per_buffer=self.CHUNK
-            )
-            self.stream_active = True
-        except Exception as e:
-            print(f"Could not open audio stream: {e}")
-            self.stream_active = False
-
-        # Visualization variables
+        # AI speech visualization variables
         self.points = []
         self.lines = []
         self.circles = []
@@ -44,6 +29,11 @@ class VoiceVisualizer(QWidget):
         self.smooth_level = 0
         self.base_color = QColor(0, 128, 255)
         self.accent_color = QColor(255, 64, 128)
+
+        # Speech status
+        self.ai_speaking = False
+        self.ai_speech_intensity = 0.5
+        self.ai_speech_timer = 0
 
         # Mode settings
         self.viz_mode = "sigil"  # sigil, wave, fractal
@@ -53,25 +43,41 @@ class VoiceVisualizer(QWidget):
         self.timer.timeout.connect(self.update_visualization)
         self.timer.start(30)  # ~30fps
 
+    def set_ai_speaking(self, is_speaking, intensity=0.5):
+        """
+        Signal that the AI is speaking to drive visualization.
+
+        Args:
+            is_speaking: Boolean indicating if AI is speaking
+            intensity: Float between 0 and 1 indicating speech intensity
+        """
+        self.ai_speaking = is_speaking
+        self.ai_speech_intensity = intensity
+        self.ai_speech_timer = 0
+
+        # If starting speech, reset visualization elements
+        if is_speaking:
+            self.points = []
+            self.lines = []
+            self.circles = []
+
     def update_visualization(self):
-        """Update the visualization based on audio input."""
-        if self.stream_active:
-            try:
-                # Read audio data
-                data = self.stream.read(self.CHUNK, exception_on_overflow=False)
-                count = len(data) // 2
-                format = f"{count}h"
-                shorts = struct.unpack(format, data)
+        """Update the visualization based on AI speech signals."""
+        # Generate a speech level
+        if self.ai_speaking:
+            # Generate a dynamic audio level for AI speech
+            # Oscillate intensity for a more natural effect
+            self.ai_speech_timer += 1
+            base_intensity = self.ai_speech_intensity
+            # Add some variation to the intensity
+            oscillation = 0.3 * np.sin(self.ai_speech_timer * 0.2)
+            self.audio_level = max(0.1, min(1.0, base_intensity + oscillation))
+        else:
+            # Gradually reduce audio level when not speaking
+            self.audio_level = max(0, self.audio_level - 0.05)
 
-                # Calculate audio level (root mean square of sample values)
-                sum_squares = sum(s * s for s in shorts)
-                self.audio_level = np.sqrt(sum_squares / count) / 32768  # Normalized to 0-1
-
-                # Smooth the level for more stable visualizations
-                self.smooth_level = 0.9 * self.smooth_level + 0.1 * self.audio_level
-
-            except Exception as e:
-                print(f"Error reading audio: {e}")
+        # Smooth the level for more stable visualizations
+        self.smooth_level = 0.9 * self.smooth_level + 0.1 * self.audio_level
 
         # Update visualization elements based on mode
         if self.viz_mode == "sigil":
@@ -277,13 +283,4 @@ class VoiceVisualizer(QWidget):
         """Clean up resources."""
         # Stop the timer
         self.timer.stop()
-
-        # Close and terminate audio
-        if hasattr(self, 'stream') and self.stream_active:
-            self.stream.stop_stream()
-            self.stream.close()
-
-        if hasattr(self, 'p'):
-            self.p.terminate()
-
         event.accept()
