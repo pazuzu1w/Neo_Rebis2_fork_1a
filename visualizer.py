@@ -29,6 +29,20 @@ class MemoryVisualizer(QWidget):
         # Get recent conversations
         conversations = self.memory_manager.get_conversation_history(limit=max_memories)
 
+        # DEBUG: Print conversation count
+        print(f"Found {len(conversations)} conversations in memory")
+
+        # Check if we have any data to display
+        if not conversations:
+            # Display debug message on graph
+            ax = self.figure.add_subplot(111)
+            ax.set_facecolor('#2D2D2D')
+            ax.text(0.5, 0.5, "No conversation data found in memory",
+                    ha='center', va='center', color='white', fontsize=14)
+            ax.set_axis_off()
+            self.canvas.draw()
+            return
+
         # Create nodes for each conversation
         for i, convo in enumerate(conversations):
             # Add the conversation as a node
@@ -81,6 +95,21 @@ class MemoryVisualizer(QWidget):
 
         # Get top N topics
         top_topics = sorted(all_topics.items(), key=lambda x: x[1], reverse=True)[:top_n]
+
+        # DEBUG: Print topic count
+        print(f"Found {len(top_topics)} unique topics in memory")
+
+        # Check if we have any data to display
+        if not top_topics:
+            # Display debug message on graph
+            ax = self.figure.add_subplot(111)
+            ax.set_facecolor('#2D2D2D')
+            ax.text(0.5, 0.5, "No topic data found in memory",
+                    ha='center', va='center', color='white', fontsize=14)
+            ax.set_axis_off()
+            self.canvas.draw()
+            return
+
 
         # Create plot
         ax = self.figure.add_subplot(111)

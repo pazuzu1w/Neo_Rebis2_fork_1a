@@ -141,6 +141,10 @@ class ChatWindow(QMainWindow):
         tools_menu = menu_bar.addMenu("&Tools")
         self.add_action(tools_menu, "&Sigil Generator", self.show_sigil_generator)
 
+        # In create_menu_bar method:
+        debug_menu = menu_bar.addMenu("&Debug")
+        self.add_action(debug_menu, "&Generate Test Data", self.generate_test_data)
+
     def add_action(self, menu, text, slot, shortcut=None):
         """Adds an action to a menu."""
         action = QAction(text, self)
@@ -223,3 +227,31 @@ class ChatWindow(QMainWindow):
     def show_sigil_generator(self):
         """Shows the sigil generator."""
         self.sigil_generator.show()
+
+    def generate_test_data(self):
+        """Generates test data for visualization."""
+        from memory import memory_manager
+
+        # Sample conversations
+        test_conversations = [
+            "I've been thinking about chaos magic and sigil creation techniques.",
+            "Poetry seems to function like a magical ritual sometimes.",
+            "How do symbols and archetypes influence our subconscious?",
+            "I'm exploring the connection between programming and magical thinking.",
+            "Dreams have a symbolic language that feels like a personal mythology.",
+            "Technology is just modern magic with different symbols.",
+            "The universe seems to have synchronistic patterns if you pay attention.",
+            "Creative writing helps me access different states of consciousness.",
+            "Python programming can be a form of modern sigil magic.",
+            "I've been experimenting with visualization techniques for memory enhancement."
+        ]
+
+        # Add sample data to memory
+        print("Adding test data to memory...")
+        for i, text in enumerate(test_conversations):
+            # Create dummy conversation
+            ai_response = f"Response #{i}: {text}"
+            memory_manager.add_conversation(text, ai_response)
+
+        print(f"Added {len(test_conversations)} test conversations to memory")
+        self.statusBar().showMessage("Test data generated", 3000)
