@@ -97,6 +97,11 @@ class MemoryManager:
         # Create topic extractor
         self.topic_extractor = TopicExtractor()
 
+        # Create collections for different memory types
+        self.episodic_collection = self._get_or_create_collection("episodic_memory")
+        self.semantic_collection = self._get_or_create_collection("semantic_memory")
+        self.procedural_collection = self._get_or_create_collection("procedural_memory")
+
     def add_memory(self, text: str, metadata: Dict = None, id: str = None) -> str:
         """Add a memory to the database with automatic topic extraction."""
         if not text:
@@ -278,6 +283,105 @@ class MemoryManager:
                 })
 
         return conversation_history
+
+    def _get_or_create_collection(self, collection_name):
+        """Get or create a ChromaDB collection"""
+        try:
+            collection = self.client.get_collection(
+                name=collection_name,
+                embedding_function=self.embedding_function
+            )
+        except:
+            collection = self.client.create_collection(
+                name=collection_name,
+                embedding_function=self.embedding_function
+            )
+        return collection
+
+    def add_episodic_memory(self, text, metadata=None):
+        """Add a memory of a specific event or conversation"""
+        if metadata is None:
+            metadata = {}
+        metadata["memory_type"] = "episodic"
+        return self._add_to_collection(self.episodic_collection, text, metadata)
+
+    def add_semantic_memory(self, text, metadata=None):
+        """Add factual knowledge to semantic memory"""
+        if metadata is None:
+            metadata = {}
+        metadata["memory_type"] = "semantic"
+        return self._add_to_collection(self.semantic_collection, text, metadata)
+
+    def add_procedural_memory(self, text, metadata=None):
+        """Add procedural knowledge (how to do things)"""
+        if metadata is None:
+            metadata = {}
+        metadata["memory_type"] = "procedural"
+        return self._add_to_collection(self.procedural_collection, text, metadata)
+
+    def _add_to_collection(self, collection, text, metadata=None):
+        """Internal method to add to a specific collection"""
+        memory_id = str(uuid.uuid4())
+
+        if metadata is None:
+            metadata = {}
+
+        if "timestamp" not in metadata:
+            metadata["timestamp"] = datetime.datetime.now().isoformat()
+
+        collection.add(
+            documents=[text],
+            metadatas=[metadata],
+            ids=[memory_id]
+        )
+
+        return memory_id
+
+    def search_all_memories(self, query, n_results=5):
+        """Search across all memory types"""
+        episodic = self.search_episodic_memory(query, n_results)
+        semantic = self.search_semantic_memory(query, n_results)
+        procedural = self.search_procedural_memory(query, n_results)
+
+        # Combine and sort by relevance (distance)
+        all_memories = episodic + semantic + procedural
+        all_memories.sort(key=lambda x: x.get("distance", float("inf")))
+
+        return all_memories[:n_results]
+
+    def search_episodic_memory(self, query, n_results=5):
+        """Search only episodic memories"""
+        return self._search_collection(self.episodic_collection, query, n_results)
+
+    def search_semantic_memory(self, query, n_results=5):
+        """Search only semantic memories"""
+        return self._search_collection(self.semantic_collection, query, n_results)
+
+    def search_procedural_memory(self, query, n_results=5):
+        """Search only procedural memories"""
+        return self._search_collection(self.procedural_collection, query, n_results)
+
+    def _search_collection(self, collection, query, n_results=5):
+        """Internal method to search a specific collection"""
+        if not query:
+            return []
+
+        results = collection.query(
+            query_texts=[query],
+            n_results=n_results
+        )
+
+        memories = []
+        if results["documents"] and len(results["documents"]) > 0:
+            for i, doc in enumerate(results["documents"][0]):
+                memories.append({
+                    "id": results["ids"][0][i],
+                    "text": doc,
+                    "metadata": results["metadatas"][0][i],
+                    "distance": results["distances"][0][i] if "distances" in results else None
+                })
+
+        return memories
 
 
 # Create a singleton instance of the memory manager

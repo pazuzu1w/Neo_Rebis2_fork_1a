@@ -11,6 +11,8 @@ from visualizer import MemoryVisualizer
 from sigil_generator import SigilGenerator
 from voice_interface import VoiceController, VoiceControlPanel
 from voice_visualizer import VoiceVisualizer
+from agent import MagicalAgent, RitualType
+from ritual_planner import RitualPlannerDialog
 
 class ChatWindow(QMainWindow):
     def __init__(self):
@@ -61,6 +63,8 @@ class ChatWindow(QMainWindow):
 
         # Initialize voice visualizer
         self.voice_visualizer = VoiceVisualizer()
+
+        self.magical_agent = MagicalAgent(self.chat)
 
     def init_or_reinit_model(self, model_name=None, system_prompt=None, temperature=None, top_p=None, top_k=None, max_output_tokens=None,
                              block_harassment=None, block_hate_speech=None, block_sexually_explicit=None, block_dangerous_content=None):
@@ -176,6 +180,11 @@ class ChatWindow(QMainWindow):
         self.add_action(submenu, "Sigil Mode", lambda: self.set_visualizer_mode("sigil"))
         self.add_action(submenu, "Wave Mode", lambda: self.set_visualizer_mode("wave"))
         self.add_action(submenu, "Fractal Mode", lambda: self.set_visualizer_mode("fractal"))
+
+        rituals_menu = menu_bar.addMenu("&Rituals")
+        self.add_action(rituals_menu, "&Plan New Ritual", self.show_ritual_journal)
+        self.add_action(rituals_menu, "&View Journal", self.show_ritual_journal)
+        self.add_action(rituals_menu, "&Record Results", self.record_ritual_results)
 
     def add_action(self, menu, text, slot, shortcut=None):
         """Adds an action to a menu."""
@@ -358,3 +367,136 @@ class ChatWindow(QMainWindow):
         """Handler for when AI speech ends."""
         if hasattr(self, 'voice_visualizer') and self.voice_visualizer.isVisible():
             self.voice_visualizer.set_ai_speaking(False)
+
+    def show_ritual_details(self, ritual):
+        """Show details of a planned ritual."""
+        # Create a detail window for the ritual
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextBrowser, QPushButton
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Ritual: {ritual['intention'][:30]}")
+        layout = QVBoxLayout(dialog)
+
+        # Ritual details
+        details = QTextBrowser()
+        details.setHtml(f"""
+            <h2>Ritual Plan</h2>
+            <p><b>ID:</b> {ritual['id']}</p>
+            <p><b>Intention:</b> {ritual['intention']}</p>
+            <p><b>Type:</b> {ritual['type'].title()}</p>
+            <p><b>Planned Date:</b> {ritual['planned_date']}</p>
+            <p><b>Status:</b> {ritual['status'].title()}</p>
+
+            <h3>Correspondences</h3>
+            <ul>
+                {''.join([f'<li><b>{k.title()}:</b> {", ".join(v)}</li>' for k, v in ritual['correspondences'].items() if v])}
+            </ul>
+
+            <h3>Ritual Steps</h3>
+            <ol>
+                {''.join([f'<li>{step}</li>' for step in ritual['steps']])}
+            </ol>
+
+            <h3>Tools</h3>
+            <ul>
+                {''.join([f'<li>{tool}</li>' for tool in ritual['tools']])}
+            </ul>
+
+            <p><b>Notes:</b> {ritual['notes']}</p>
+        """)
+        layout.addWidget(details)
+
+        # Execute button
+        if ritual['status'] == 'planned':
+            execute_button = QPushButton("Execute Ritual")
+            execute_button.clicked.connect(lambda: self.execute_ritual(ritual['id']))
+            layout.addWidget(execute_button)
+
+        dialog.setLayout(layout)
+        dialog.resize(500, 600)
+        dialog.exec()
+
+    def execute_ritual(self, ritual_id):
+        """Mark a ritual as executed."""
+        result = self.magical_agent.execute_ritual(ritual_id)
+        if 'error' not in result:
+            QMessageBox.information(self, "Ritual Executed",
+                                    "The ritual has been marked as executed. Remember to record results later.")
+
+    def show_ritual_journal(self):
+        """Show the magical journal."""
+        # Create a journal viewer dialog
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton, QHBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Magical Journal")
+        layout = QVBoxLayout(dialog)
+
+        # Journal list
+        self.journal_list = QListWidget()
+        for ritual in self.magical_agent.journal:
+            self.journal_list.addItem(f"{ritual['id']} - {ritual['type'].title()}: {ritual['intention'][:30]}")
+        layout.addWidget(self.journal_list)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        view_button = QPushButton("View Details")
+        view_button.clicked.connect(self.view_journal_entry)
+
+        export_button = QPushButton("Export Journal")
+        export_button.clicked.connect(self.export_journal)
+
+        import_button = QPushButton("Import Journal")
+        import_button.clicked.connect(self.import_journal)
+
+        button_layout.addWidget(view_button)
+        button_layout.addWidget(export_button)
+        button_layout.addWidget(import_button)
+        layout.addLayout(button_layout)
+
+        dialog.setLayout(layout)
+        dialog.resize(600, 400)
+        dialog.exec()
+
+    def view_journal_entry(self):
+        """View a journal entry."""
+        if not self.journal_list.currentItem():
+            return
+
+        # Get the selected ritual ID
+        text = self.journal_list.currentItem().text()
+        ritual_id = int(text.split(' - ')[0])
+
+        # Get the ritual details
+        ritual = self.magical_agent.get_ritual_by_id(ritual_id)
+        if ritual:
+            self.show_ritual_details(ritual)
+
+    def export_journal(self):
+        """Export the magical journal."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        filename, _ = QFileDialog.getSaveFileName(self, "Export Journal",
+                                                  "", "JSON Files (*.json)")
+        if filename:
+            result = self.magical_agent.export_journal(filename)
+            if result['status'] == 'success':
+                QMessageBox.information(self, "Export Successful",
+                                        f"Journal exported to {result['path']}")
+
+    def import_journal(self):
+        """Import a magical journal."""
+        from PyQt6.QtWidgets import QFileDialog
+
+        filename, _ = QFileDialog.getOpenFileName(self, "Import Journal",
+                                                  "", "JSON Files (*.json)")
+        if filename:
+            result = self.magical_agent.import_journal(filename)
+            if result['status'] == 'success':
+                QMessageBox.information(self, "Import Successful",
+                                        f"Imported {result['count']} journal entries")
+
+    def record_ritual_results(self):
+        """Record results for a ritual."""
+        # Show a dialog to select a ritual and record results
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QComboBox, QLabel, QTextEdit, QSpinBox

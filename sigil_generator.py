@@ -2,10 +2,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLineEdit,
-                             QPushButton, QLabel, QSlider, QComboBox, QGridLayout)
-from PyQt6.QtCore import Qt
+                             QPushButton, QLabel, QSlider, QComboBox, QGridLayout, QHBoxLayout, QCheckBox)
+from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve
 import random
 import string
+import time
 
 
 class SigilGenerator(QWidget):
@@ -58,6 +59,32 @@ class SigilGenerator(QWidget):
         # Add all to main layout
         main_layout.addLayout(input_layout)
         main_layout.addWidget(self.canvas, 1)
+
+        # Add sigil charging button
+        self.charge_button = QPushButton("Charge Sigil")
+        self.charge_button.clicked.connect(self.charge_sigil)
+        input_layout.addWidget(self.charge_button, 4, 0, 1, 4)
+
+        # Add animation controls
+        animation_layout = QHBoxLayout()
+        self.animate_checkbox = QCheckBox("Animate")
+        self.animate_checkbox.toggled.connect(self.toggle_animation)
+
+        self.animation_speed = QSlider(Qt.Orientation.Horizontal)
+        self.animation_speed.setMinimum(10)
+        self.animation_speed.setMaximum(200)
+        self.animation_speed.setValue(100)
+
+        animation_layout.addWidget(self.animate_checkbox)
+        animation_layout.addWidget(QLabel("Speed:"))
+        animation_layout.addWidget(self.animation_speed)
+
+        input_layout.addLayout(animation_layout, 5, 0, 1, 4)
+
+        # Animation timer
+        self.animation_timer = QTimer(self)
+        self.animation_timer.timeout.connect(self.update_animation)
+        self.animation_phase = 0.0
 
     def generate_sigil(self):
         intention = self.intention_input.text().strip()
@@ -296,3 +323,172 @@ class SigilGenerator(QWidget):
             if not fileName.endswith(".png"):
                 fileName += ".png"
             self.figure.savefig(fileName, facecolor='black', dpi=300, bbox_inches='tight')
+
+    def toggle_animation(self, checked):
+        """Toggle sigil animation."""
+        if checked:
+            self.animation_timer.start(50)
+        else:
+            self.animation_timer.stop()
+            # Regenerate the static sigil
+            self.generate_sigil()
+
+    def update_animation(self):
+        """Update the animated sigil."""
+        # Update animation phase
+        speed = self.animation_speed.value() / 100.0
+        self.animation_phase += 0.05 * speed
+        if self.animation_phase > 2 * np.pi:
+            self.animation_phase -= 2 * np.pi
+
+        # Regenerate the sigil with animation effects
+        intention = self.intention_input.text().strip()
+        if not intention:
+            return
+
+        complexity = self.complexity_slider.value()
+        style = self.style_combo.currentText()
+
+        # Clear the figure
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        ax.set_facecolor('black')
+
+        # Draw animated version
+        self.draw_animated_sigil(ax, intention, complexity, style)
+
+        # Update canvas
+        self.canvas.draw()
+
+    def draw_animated_sigil(self, ax, intention, complexity, style):
+        """Draw an animated version of the sigil."""
+        processed_text = self.process_intention(intention)
+
+        if style == "Chaotic":
+            self.draw_animated_chaotic(ax, processed_text, complexity)
+        elif style == "Geometric":
+            self.draw_animated_geometric(ax, processed_text, complexity)
+        elif style == "Organic":
+            self.draw_animated_organic(ax, processed_text, complexity)
+        # Add other styles...
+
+        # Remove axis
+        ax.set_axis_off()
+        ax.set_xlim(-1.2, 1.2)
+        ax.set_ylim(-1.2, 1.2)
+
+    def draw_animated_chaotic(self, ax, text, complexity):
+        """Draw animated chaotic sigil."""
+        points = []
+        # Generate points based on characters
+        for i, char in enumerate(text):
+            # Convert char to position on unit circle with animation
+            angle = (ord(char) - ord('a')) * (360 / 26) * (np.pi / 180)
+            angle += self.animation_phase * 0.2  # Animation effect
+
+            r = 0.8 + 0.1 * np.sin(self.animation_phase + i * 0.5)  # Pulsing radius
+            x = r * np.cos(angle)
+            y = r * np.sin(angle)
+            points.append((x, y))
+
+        # Draw connections with glow effect
+        for i in range(len(points)):
+            for j in range(i + 1, min(i + complexity + 1, len(points))):
+                # Animated alpha based on phase
+                alpha = 0.7 + 0.3 * np.sin(self.animation_phase + i * 0.2)
+
+                ax.plot([points[i][0], points[j][0]],
+                        [points[i][1], points[j][1]],
+                        'w-', alpha=alpha, linewidth=2)
+
+        # Draw points with pulsing effect
+        for i, (x, y) in enumerate(points):
+            size = 50 + 20 * np.sin(self.animation_phase + i * 0.3)
+            ax.scatter(x, y, color='red', s=size, zorder=10,
+                       alpha=0.7 + 0.3 * np.sin(self.animation_phase))
+
+        # Similar methods for other animated styles...
+
+    def charge_sigil(self):
+        """Perform a visual charging effect on the sigil."""
+        # Save current state
+        current_style = self.style_combo.currentText()
+        current_complexity = self.complexity_slider.value()
+        intention = self.intention_input.text().strip()
+
+        if not intention:
+            return
+
+        # Disable UI during charging
+        self.setEnabled(False)
+
+        # Start charging animation
+        self.charging_phase = 0
+        self.charging_timer = QTimer(self)
+        self.charging_timer.timeout.connect(lambda: self.charging_step(intention, current_complexity, current_style))
+        self.charging_timer.start(50)
+
+    def charging_step(self, intention, complexity, style):
+        """Perform one step of the charging animation."""
+        self.charging_phase += 1
+
+        # Clear the figure
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+
+        # Change background color based on phase
+        if self.charging_phase < 10:
+            # Start black
+            ax.set_facecolor('black')
+        elif self.charging_phase < 30:
+            # Transition to red
+            intensity = (self.charging_phase - 10) / 20.0
+            ax.set_facecolor((intensity, 0, 0))
+        elif self.charging_phase < 50:
+            # Pulse red to white
+            intensity = (self.charging_phase - 30) / 20.0
+            ax.set_facecolor((1, intensity, intensity))
+        elif self.charging_phase < 70:
+            # Transition to violet
+            intensity = (self.charging_phase - 50) / 20.0
+            ax.set_facecolor((1 - intensity, 0, 1))
+        elif self.charging_phase < 90:
+            # Flash white
+            ax.set_facecolor('white')
+
+            # Draw inverted sigil
+            processed_text = self.process_intention(intention)
+            if style == "Chaotic":
+                self.draw_chaotic_sigil(ax, processed_text, complexity)
+            elif style == "Geometric":
+                self.draw_geometric_sigil(ax, processed_text, complexity)
+            # Add other styles...
+
+            # Inverse colors for sigil
+            for line in ax.get_lines():
+                line.set_color('black')
+
+            for collection in ax.collections:
+                collection.set_color('black')
+        else:
+            # Finish and return to normal
+            ax.set_facecolor('black')
+            processed_text = self.process_intention(intention)
+
+            if style == "Chaotic":
+                self.draw_chaotic_sigil(ax, processed_text, complexity)
+            elif style == "Geometric":
+                self.draw_geometric_sigil(ax, processed_text, complexity)
+            # Add other styles...
+
+            # End charging
+            self.charging_timer.stop()
+            self.setEnabled(True)
+
+        # Remove axis
+        ax.set_axis_off()
+        ax.set_xlim(-1.2, 1.2)
+        ax.set_ylim(-1.2, 1.2)
+
+        # Update canvas
+        self.canvas.draw()
