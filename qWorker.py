@@ -1,3 +1,4 @@
+# qWorker.py - updated
 from PyQt6.QtCore import QThread, pyqtSignal
 
 
@@ -6,22 +7,25 @@ class ChatWorker(QThread):
     error_signal = pyqtSignal(str)
     done_signal = pyqtSignal()
 
-    def __init__(self, chat, message):
+    def __init__(self, model_component, message):
         super().__init__()
-        self.chat = chat
+        self.model_component = model_component
         self.message = message
 
     def run(self):
         try:
-            # Use get_response instead of direct send_message
-            from model import get_response
-            response = get_response(self.chat, self.message)
+            # Send the message to the model
+            response = self.model_component.send_message(self.message)
 
-            if response and response.text:
+            if response and hasattr(response, 'text') and response.text:
                 self.stream_signal.emit(response.text)
             else:
-                self.stream_signal.emit("[No response received]")
-            self.done_signal.emit()  # Emit done signal
+                # Handle case where response is not a proper model response
+                text = str(response) if response else "[No response received]"
+                self.stream_signal.emit(text)
+
+            self.done_signal.emit()
 
         except Exception as e:
             self.error_signal.emit(str(e))
+            self.done_signal.emit()

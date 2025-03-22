@@ -7,8 +7,12 @@ from pywin.scintilla.config import ConfigManager
 class EngineCore:
     def __init__(self):
         self.components = {}
-        self.config_manager = ConfigManager()
+        # Use the positional parameter 'f' instead of 'config_file'
+        config_path = "path/to/your/config.json"  # or whatever path is appropriate
+        self.config_manager = ConfigManager(f=config_path)
+        # or simply: self.config_manager = ConfigManager(config_path)
         self.logger = Logger()
+
 
     def register_component(self, name, component):
         """Register a component with the engine"""

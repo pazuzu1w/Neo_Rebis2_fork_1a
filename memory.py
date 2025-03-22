@@ -102,8 +102,11 @@ class MemoryManager:
         self.semantic_collection = self._get_or_create_collection("semantic_memory")
         self.procedural_collection = self._get_or_create_collection("procedural_memory")
 
-    def add_memory(self, text: str, metadata: Dict = None, id: str = None) -> str:
-        """Add a memory to the database with automatic topic extraction."""
+    def add_memory(self,
+                   text: str,
+                   metadata: Dict = None,
+                   id: str = None) -> str:
+        """Add a memory to the database."""
         if not text:
             return None
 
@@ -114,26 +117,26 @@ class MemoryManager:
         if metadata is None:
             metadata = {}
 
+        # Convert any non-primitive types to strings to satisfy ChromaDB requirements
+        sanitized_metadata = {}
+        for key, value in metadata.items():
+            if isinstance(value, (list, dict, tuple, set)):
+                sanitized_metadata[key] = str(value)
+            else:
+                sanitized_metadata[key] = value
+
         # Add timestamp if not in metadata
-        if "timestamp" not in metadata:
-            metadata["timestamp"] = datetime.datetime.now().isoformat()
-
-        # Extract topics from the text
-        topics = self.topic_extractor.extract_topics(text)
-
-        # Add topics to metadata
-        for i, (topic, _) in enumerate(topics):
-            metadata[f"topic_{i}"] = topic
+        if "timestamp" not in sanitized_metadata:
+            sanitized_metadata["timestamp"] = datetime.datetime.now().isoformat()
 
         # Add memory to collection
         self.collection.add(
             documents=[text],
-            metadatas=[metadata],
+            metadatas=[sanitized_metadata],
             ids=[memory_id]
         )
 
         return memory_id
-
     def search_by_topic(self, topic, n_results=5):
         """Search for memories containing a specific topic."""
         # Build filters for each possible topic field
@@ -325,6 +328,11 @@ class MemoryManager:
 
         if metadata is None:
             metadata = {}
+
+        # Ensure all metadata values are primitive types
+        for key, value in list(metadata.items()):  # Use list() to avoid modifying during iteration
+            if isinstance(value, (list, dict, tuple)):
+                metadata[key] = str(value)
 
         if "timestamp" not in metadata:
             metadata["timestamp"] = datetime.datetime.now().isoformat()
