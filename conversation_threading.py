@@ -1,179 +1,217 @@
 # conversation_threading.py
 import uuid
-from datetime import datetime
+import datetime
+import json
+import os
+from typing import List, Dict, Optional
 
 
 class ConversationThread:
-    def __init__(self, memory_manager, title=None):
+    def __init__(self, memory_manager, thread_id=None, title=None):
         self.memory_manager = memory_manager
-        self.thread_id = str(uuid.uuid4())
-        self.title = title or f"Conversation {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        self.thread_id = thread_id if thread_id else str(uuid.uuid4())
+        self.title = title if title else f"Conversation {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
         self.messages = []
-        self.metadata = {
-            "created_at": datetime.now().isoformat(),
-            "type": "conversation_thread"
-        }
+        self.created_at = datetime.datetime.now().isoformat()
+        self.updated_at = self.created_at
+        self.metadata = {}
 
-    def add_message(self, text, speaker, metadata=None):
+    def add_message(self, text, role):
         """Add a message to the thread"""
-        if metadata is None:
-            metadata = {}
+        if not text:
+            return None
 
         message_id = str(uuid.uuid4())
         timestamp = datetime.datetime.now().isoformat()
 
-        # Prepare message metadata
-        message_metadata = {
+        # Create message structure
+        message = {
+            "id": message_id,
             "thread_id": self.thread_id,
-            "message_id": message_id,
-            "timestamp": timestamp,
-            "speaker": speaker,
-            "position": len(self.messages),
-            "type": "message"
+            "text": text,
+            "role": role,
+            "timestamp": timestamp
         }
 
-        # Add custom metadata, ensuring primitive types
-        for key, value in metadata.items():
-            if isinstance(value, (list, dict, tuple, set)):
-                message_metadata[key] = str(value)
-            else:
-                message_metadata[key] = value
+        # Add to local cache
+        self.messages.append(message)
 
-        # Add to thread's message list
-        self.messages.append({
-            "id": message_id,
-            "text": text,
-            "speaker": speaker,
-            "timestamp": timestamp
-        })
+        # Update thread metadata
+        self.updated_at = timestamp
 
-        # Store in memory
-        mem_id = self.memory_manager.add_episodic_memory(text, message_metadata)
+        # Store in memory system for persistence
+        if self.memory_manager:
+            metadata = {
+                "type": "message",
+                "role": role,
+                "thread_id": self.thread_id,
+                "timestamp": timestamp
+            }
+            self.memory_manager.add_memory(text, metadata, message_id)
 
         return message_id
 
-    def get_thread_summary(self):
-        """Get a summary of the conversation thread"""
-        if not self.messages:
-            return "Empty conversation"
-
-        # Get first, last and count of messages
-        first_msg = self.messages[0]
-        last_msg = self.messages[-1]
-        msg_count = len(self.messages)
-
-        # Calculate duration
-        try:
-            start_time = datetime.fromisoformat(first_msg["timestamp"])
-            end_time = datetime.fromisoformat(last_msg["timestamp"])
-            duration = end_time - start_time
-            duration_str = f"{duration.total_seconds() / 60:.1f} minutes"
-        except:
-            duration_str = "unknown duration"
-
-        # Count messages by speaker
-        speakers = {}
-        for msg in self.messages:
-            speakers[msg["speaker"]] = speakers.get(msg["speaker"], 0) + 1
-
-        speaker_str = ", ".join([f"{speaker}: {count}" for speaker, count in speakers.items()])
-
-        return f"{self.title}: {msg_count} messages over {duration_str} ({speaker_str})"
+    def get_messages(self, limit=None):
+        """Get recent messages from thread"""
+        if limit:
+            return self.messages[-limit:]
+        return self.messages
 
     def get_full_thread(self):
         """Get all messages in the thread"""
         return self.messages
 
+    def format_for_model(self, system_prompt=None, limit=None):
+        """Format thread messages for model input"""
+        formatted = []
+
+        # Add system prompt if provided
+        if system_prompt:
+            formatted.append({
+                "role": "system",
+                "content": system_prompt
+            })
+
+        # Add messages, with optional limit
+        messages = self.messages
+        if limit and len(messages) > limit:
+            messages = messages[-limit:]
+
+        for msg in messages:
+            # Convert internal role format to model format
+            role = "assistant" if msg["role"] == "ai" else msg["role"]
+            formatted.append({
+                "role": role,
+                "content": msg["text"]
+            })
+
+        return formatted
+
     def save_thread_metadata(self):
-        """Save the thread metadata to memory"""
+        """Save thread metadata to memory system"""
+        if not self.memory_manager:
+            return False
+
         metadata = {
+            "type": "thread_metadata",
             "thread_id": self.thread_id,
             "title": self.title,
-            "message_count": len(self.messages),
-            "speakers": list(set(msg["speaker"] for msg in self.messages)),
-            "created_at": self.metadata["created_at"],
-            "last_updated": datetime.now().isoformat(),
-            "type": "conversation_thread"
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "message_count": len(self.messages)
         }
 
-        # Create a summary of the thread
-        summary = self.get_thread_summary()
+        # Combine with any additional metadata
+        metadata.update(self.metadata)
 
-        # Store in semantic memory
-        self.memory_manager.add_semantic_memory(summary, metadata)
+        # Store in memory
+        memory_id = f"thread:{self.thread_id}:metadata"
+        content = f"Conversation thread: {self.title}"
+
+        self.memory_manager.add_memory(content, metadata, memory_id)
+        return True
 
 
 class ThreadManager:
     def __init__(self, memory_manager):
         self.memory_manager = memory_manager
-        self.active_threads = {}
+        self.active_threads = {}  # Cache of active threads
 
     def create_thread(self, title=None):
         """Create a new conversation thread"""
-        thread = ConversationThread(self.memory_manager, title)
+        thread = ConversationThread(self.memory_manager, title=title)
         self.active_threads[thread.thread_id] = thread
+
+        # Save metadata immediately
+        thread.save_thread_metadata()
         return thread
 
     def get_thread(self, thread_id):
-        """Get an active thread by ID"""
-        return self.active_threads.get(thread_id)
+        """Get a thread from cache or load it"""
+        if thread_id in self.active_threads:
+            return self.active_threads[thread_id]
+
+        # Try to load from memory
+        return self.load_thread(thread_id)
 
     def load_thread(self, thread_id):
-        """Load a thread from memory by ID"""
-        # Search for thread metadata
-        thread_meta = self.memory_manager.semantic_collection.get(
-            where={"thread_id": thread_id, "type": "conversation_thread"}
-        )
+        """Load a thread from memory"""
+        if not self.memory_manager:
+            return None
 
-        if not thread_meta["ids"]:
+        # First get thread metadata
+        metadata_id = f"thread:{thread_id}:metadata"
+        metadata_memory = self.memory_manager.get_memory_by_id(metadata_id)
+
+        if not metadata_memory:
             return None
 
         # Create thread object
-        thread = ConversationThread(self.memory_manager)
-        thread.thread_id = thread_id
-        thread.title = thread_meta["metadatas"][0].get("title", "Untitled Thread")
-        thread.metadata = thread_meta["metadatas"][0]
-
-        # Load all messages in this thread
-        messages = self.memory_manager.episodic_collection.get(
-            where={"thread_id": thread_id, "type": "message"}
+        thread = ConversationThread(
+            self.memory_manager,
+            thread_id=thread_id,
+            title=metadata_memory["metadata"].get("title")
         )
 
-        if messages["ids"]:
-            # Sort by position
-            sorted_msgs = sorted(zip(messages["ids"], messages["documents"], messages["metadatas"]),
-                                 key=lambda x: x[2].get("position", 0))
+        # Update thread metadata from memory
+        thread.created_at = metadata_memory["metadata"].get("created_at", thread.created_at)
+        thread.updated_at = metadata_memory["metadata"].get("updated_at", thread.updated_at)
 
-            # Add to thread
-            for msg_id, text, metadata in sorted_msgs:
-                thread.messages.append({
-                    "id": msg_id,
-                    "text": text,
-                    "speaker": metadata.get("speaker", "unknown"),
-                    "timestamp": metadata.get("timestamp", "")
-                })
+        # Load messages for this thread
+        messages = self.memory_manager.search_memory(
+            query="",  # Empty query
+            n_results=100,  # Reasonable limit
+            metadata_filter={"thread_id": {"$eq": thread_id}, "type": {"$eq": "message"}}
+        )
 
-        # Add to active threads
+        # Sort by timestamp
+        messages.sort(key=lambda x: x["metadata"].get("timestamp", ""))
+
+        # Add to thread
+        for msg in messages:
+            message = {
+                "id": msg["id"],
+                "thread_id": thread_id,
+                "text": msg["text"],
+                "role": msg["metadata"].get("role", "user"),
+                "timestamp": msg["metadata"].get("timestamp")
+            }
+            thread.messages.append(message)
+
+        # Cache and return
         self.active_threads[thread_id] = thread
         return thread
 
+    def delete_thread(self, thread_id):
+        """Delete a thread and all its messages"""
+        if thread_id in self.active_threads:
+            del self.active_threads[thread_id]
+
+        # TODO: Implement deletion of all thread messages from memory
+        # This would require a search + delete operation on the memory manager
+
     def list_recent_threads(self, limit=10):
         """List recent conversation threads"""
-        threads = self.memory_manager.semantic_collection.get(
-            where={"type": "conversation_thread"},
-            limit=100  # Get more than needed for sorting
-        )
-
-        if not threads["ids"]:
+        if not self.memory_manager:
             return []
 
-        # Sort by last_updated
-        sorted_threads = sorted(zip(threads["ids"], threads["documents"], threads["metadatas"]),
-                                key=lambda x: x[2].get("last_updated", ""), reverse=True)
+        # Search for thread metadata entries
+        threads = self.memory_manager.search_memory(
+            query="Conversation thread",
+            n_results=limit,
+            metadata_filter={"type": {"$eq": "thread_metadata"}}
+        )
 
-        # Return only requested number
-        return [{
-            "id": thread_id,
-            "summary": summary,
-            "metadata": metadata
-        } for thread_id, summary, metadata in sorted_threads[:limit]]
+        # Format results
+        thread_list = []
+        for thread in threads:
+            thread_list.append({
+                "id": thread["metadata"].get("thread_id"),
+                "title": thread["metadata"].get("title"),
+                "updated_at": thread["metadata"].get("updated_at"),
+                "message_count": thread["metadata"].get("message_count", 0)
+            })
+
+        # Sort by updated_at
+        thread_list.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+        return thread_list

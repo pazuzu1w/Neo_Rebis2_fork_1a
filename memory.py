@@ -263,29 +263,8 @@ class MemoryManager:
         results = self.collection.query(
             query_texts=["conversation"],  # Generic query to get conversations
             n_results=limit,
-            where={"type": "ai_response"}
+            where={"type": {"$eq": "ai_response"}}  # Use proper operator format
         )
-
-        conversation_history = []
-        if results["documents"] and len(results["documents"]) > 0:
-            for i, doc in enumerate(results["documents"][0]):
-                metadata = results["metadatas"][0][i]
-
-                # Get the corresponding user message
-                user_message = None
-                if "in_response_to" in metadata:
-                    user_result = self.get_memory_by_id(metadata["in_response_to"])
-                    if user_result:
-                        user_message = user_result["text"]
-
-                conversation_history.append({
-                    "timestamp": metadata.get("timestamp", ""),
-                    "conversation_id": metadata.get("conversation_id", ""),
-                    "user_message": user_message,
-                    "ai_response": doc
-                })
-
-        return conversation_history
 
     def _get_or_create_collection(self, collection_name):
         """Get or create a ChromaDB collection"""
