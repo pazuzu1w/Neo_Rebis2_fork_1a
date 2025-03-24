@@ -9,7 +9,7 @@ from PyQt6.QtGui import QFont, QAction, QShortcut, QKeySequence, QTextCharFormat
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from qWorker import ChatWorker
-
+from theme_manager import ThemeManager
 
 class MemoryBrowser(QWidget):
     def __init__(self, memory_component):
@@ -60,6 +60,7 @@ class MemoryBrowser(QWidget):
         splitter.addWidget(self.results_display)
         splitter.addWidget(self.memory_details)
         layout.addWidget(splitter, 1)
+
 
     def search_memories(self):
         query = self.search_box.toPlainText().strip()
@@ -471,6 +472,9 @@ class ChatWindow(QMainWindow):
 
             self.memory_viz = MemoryVisualization(self.memory_component)
             self.sidebar.addTab(self.memory_viz, "Memory Visualization")
+
+        self.theme_manager = ThemeManager(self)
+        self.theme_manager.set_theme("default")
 
         # Settings tab
         self.settings_tab = SettingsTab(self.engine)

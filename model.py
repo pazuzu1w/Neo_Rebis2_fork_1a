@@ -79,11 +79,12 @@ class ModelComponent(Component):
 
             self.model = genai.GenerativeModel(
                 model_name=self.model_name,
+                system_instruction=self.system_prompt,
                 tools=tools_list,
                 safety_settings=safety_settings,
                 generation_config=generation_config,
             )
-            self.chat = self.model.start_chat()  # No need for automatic function calling here
+            self.chat = self.model.start_chat(enable_automatic_function_calling=True)  # No need for automatic function calling here
             return True
 
         except Exception as e:
