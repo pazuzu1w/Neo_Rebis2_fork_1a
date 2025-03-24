@@ -1,28 +1,44 @@
-# qWorker.py - Corrected
+# qWorker.py
 from PyQt6.QtCore import QThread, pyqtSignal
 
 
 class ChatWorker(QThread):
-    stream_signal = pyqtSignal(str)  # Signal for streaming responses
-    error_signal = pyqtSignal(str)  # Signal for errors
-    done_signal = pyqtSignal()  # Signal for completion
+    """Worker thread for handling AI chat responses without freezing the UI."""
 
-    def __init__(self, model_component, message):
+    stream_signal = pyqtSignal(str)  # Signal for streaming partial responses
+    error_signal = pyqtSignal(str)  # Signal for reporting errors
+    done_signal = pyqtSignal()  # Signal for completion notification
+
+    def __init__(self, model_component, query_text):
         super().__init__()
         self.model_component = model_component
-        self.message = message
+        self.query_text = query_text
+        self.response_buffer = ""
 
     def run(self):
-        try:
-            # Send the message to the model
-            response_text = self.model_component.send_message(self.message)
-            print(f"ChatWorker received response: {response_text}")
+        """Run the worker thread to get AI response."""
+        if not self.model_component:
+            self.error_signal.emit("Model component not available")
+            return
 
-            # Emit the response text (even if it's an error message)
-            self.stream_signal.emit(response_text)
-            self.done_signal.emit()  # Always emit done when finished
+        try:
+            # Check if streaming is supported
+            if hasattr(self.model_component, 'generate_response_stream'):
+                # Use streaming API
+                for chunk in self.model_component.generate_response_stream(self.query_text):
+                    if chunk:
+                        self.stream_signal.emit(chunk)
+
+                # Signal completion
+                self.done_signal.emit()
+            else:
+                # Fallback to non-streaming API
+                response = self.model_component.send_message(self.query_text)
+                if response:
+                    self.stream_signal.emit(response)
+                    self.done_signal.emit()
+                else:
+                    self.error_signal.emit("Empty response received")
 
         except Exception as e:
-            print(f"ChatWorker error: {e}")
             self.error_signal.emit(str(e))
-            self.done_signal.emit()

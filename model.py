@@ -1,4 +1,6 @@
 # model.py - Corrected and significantly improved
+import logging
+
 from component import Component
 import google.generativeai as genai
 from google.generativeai.types import HarmBlockThreshold
