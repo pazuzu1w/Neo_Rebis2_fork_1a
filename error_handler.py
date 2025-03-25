@@ -4,8 +4,8 @@ from _logging import Logger
 
 
 class ErrorHandler:
-    def __init__(self):
-        self.logger = Logger()
+    def __init__(self, logger=None):
+        self.logger = logger or Logger()
 
     def handle_exception(self, exc_type, exc_value, exc_traceback):
         """Handle an exception"""
